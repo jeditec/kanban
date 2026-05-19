@@ -2,12 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy application files
-COPY server.py .
-COPY index.html .
-
-# Install dependencies
-RUN pip install --no-cache-dir pyminizip
+# Install build dependencies for pyminizip, then the package, then clean up
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libzip-dev && \
+    pip install --no-cache-dir pyminizip && \
+    apt-get purge -y gcc libzip-dev && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
 
 # Environment variables
 ENV KANBAN_HTTP_PORT=8060
