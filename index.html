@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kanban Board</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --bg: #1a1a2e;
@@ -708,8 +707,8 @@
             <p class="prompt-error" id="promptError">Incorrect password. Please try again.</p>
             <input type="password" id="promptPassword" placeholder="Enter password" autocomplete="off">
             <div class="prompt-actions">
-                <button class="btn btn-secondary" onclick="hidePrompt()">Cancel</button>
-                <button class="btn btn-primary" id="promptConfirmBtn" onclick="submitPrompt()">Unlock</button>
+                <button class="btn btn-secondary" type="button" onclick="hidePrompt()">Cancel</button>
+                <button class="btn btn-primary" type="button" id="promptConfirmBtn" onclick="handlePromptConfirm()">Unlock</button>
             </div>
         </div>
     </div>
@@ -761,43 +760,7 @@
             return res.json();
         }
 
-        // --- Crypto (PBKDF2 + AES-GCM) ---
-        const cryptoSalt = new Uint8Array([75, 97, 110, 98, 97, 110, 66, 111, 97, 114, 100, 68, 97, 116, 97, 115]);
-        const cryptoIv = new Uint8Array([75, 98, 111, 97, 114, 100, 69, 110, 99, 114, 121, 112, 116, 105, 111, 110]);
-
-        async function deriveKey(password) {
-            const encoder = new TextEncoder();
-            const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']);
-            return crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt: cryptoSalt, iterations: 100000, hash: 'SHA-256' },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-        }
-
-        async function encryptData(data, password) {
-            const key = await deriveKey(password);
-            const iv = new Uint8Array(12);
-            crypto.getRandomValues(iv);
-            const encoder = new TextEncoder();
-            const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(JSON.stringify(data)));
-            const encryptedBytes = new Uint8Array(encrypted);
-            const combined = new Uint8Array(12 + encryptedBytes.length);
-            combined.set(iv, 0);
-            combined.set(encryptedBytes, 12);
-            return combined;
-        }
-
-        async function decryptData(encryptedData, password) {
-            const key = await deriveKey(password);
-            const iv = encryptedData.slice(0, 12);
-            const ciphertext = encryptedData.slice(12);
-            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
-            const decoder = new TextDecoder();
-            return JSON.parse(decoder.decode(decrypted));
-        }
+        // --- Auth / Login ---
 
         // --- Auth / Login ---
         function showLogin() {
@@ -1102,18 +1065,20 @@
             showDeleteConfirm(id, task.title);
         }
 
-        // --- Import / Export ---
-        let promptResolve = null;
+        // --- Import / Export (server-side encryption) ---
+        let resolvePrompt = null;
 
-        function showPasswordPrompt(title, desc, isImport) {
+        function showPasswordPrompt(title, desc) {
             return new Promise((resolve) => {
-                promptResolve = resolve;
+                resolvePrompt = resolve;
                 document.getElementById('promptTitle').textContent = title;
                 document.getElementById('promptDesc').textContent = desc;
-                document.getElementById('promptIcon').textContent = isImport ? '🔓' : '🔐';
-                document.getElementById('promptConfirmBtn').textContent = isImport ? 'Unlock & Import' : 'Export';
+                document.getElementById('promptIcon').textContent = '🔐';
+                document.getElementById('promptConfirmBtn').textContent = 'Confirm';
                 document.getElementById('promptError').classList.remove('visible');
+                document.getElementById('promptPassword').style.display = '';
                 document.getElementById('promptPassword').value = '';
+                document.getElementById('promptPassword').disabled = false;
                 document.getElementById('promptOverlay').classList.add('active');
                 setTimeout(() => document.getElementById('promptPassword').focus(), 100);
             });
@@ -1121,53 +1086,101 @@
 
         function hidePrompt() {
             document.getElementById('promptOverlay').classList.remove('active');
-            if (promptResolve) promptResolve(null);
-            promptResolve = null;
+            if (resolvePrompt) {
+                resolvePrompt(null);
+                resolvePrompt = null;
+            }
         }
 
         function closePromptOutside(e) {
             if (e.target === e.currentTarget) hidePrompt();
         }
 
-        async function submitPrompt() {
-            const password = document.getElementById('promptPassword').value;
-            if (!password) {
-                document.getElementById('promptError').textContent = 'Please enter a password.';
-                document.getElementById('promptError').classList.add('visible');
-                return;
-            }
-            hidePrompt();
-            if (promptResolve) {
-                promptResolve(password);
-                promptResolve = null;
-            }
+        let pendingExportUrl = null;
+        let pendingExportFilename = null;
+
+        function triggerDownload(url, filename) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+                a.remove();
+            }, 1000);
         }
 
         async function exportData() {
             try {
                 const password = await showPasswordPrompt(
                     'Export Backup',
-                    'Enter a password to encrypt your tasks. You will need this password to import later.',
-                    false
+                    'Enter a password to encrypt your tasks. You will need this password to import later.'
                 );
                 if (!password) return;
 
-                const zip = new JSZip();
-                const jsonContent = JSON.stringify(tasks, null, 2);
-                const encryptedBytes = await encryptData(tasks, password);
-                const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
-                zip.file('tasks.enc', encryptedBlob);
+                document.getElementById('promptIcon').textContent = '⏳';
+                document.getElementById('promptTitle').textContent = 'Exporting...';
+                document.getElementById('promptDesc').textContent = 'Encrypting and creating backup. Please wait.';
+                document.getElementById('promptPassword').style.display = 'none';
+                document.getElementById('promptConfirmBtn').style.display = 'none';
 
-                const zipBlob = await zip.generateAsync({ type: 'blob' });
-                const url = URL.createObjectURL(zipBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `kanban-backup-${new Date().toISOString().slice(0, 10)}.zip`;
-                a.click();
-                URL.revokeObjectURL(url);
+                const res = await fetch('/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...apiHeaders() },
+                    body: JSON.stringify({ password })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || 'Export failed');
+                }
+
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const filename = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'kanban-backup.zip';
+
+                // Store for the download button click
+                pendingExportUrl = url;
+                pendingExportFilename = filename;
+
+                // Show download button
+                document.getElementById('promptIcon').textContent = '✅';
+                document.getElementById('promptTitle').textContent = 'Backup Ready';
+                document.getElementById('promptDesc').textContent = 'Your backup is ready. Click the button below to download.';
+                document.getElementById('promptConfirmBtn').textContent = '⬇ Download Backup';
+                document.getElementById('promptConfirmBtn').style.display = 'inline-flex';
             } catch (err) {
                 console.error('Export failed:', err);
-                alert('Export failed. Check console for details.');
+                alert('Export failed: ' + err.message);
+                hidePrompt();
+            }
+        }
+
+        function handlePromptConfirm() {
+            const btn = document.getElementById('promptConfirmBtn');
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Processing...';
+            const password = document.getElementById('promptPassword').value;
+            if (!password) {
+                document.getElementById('promptError').textContent = 'Please enter a password.';
+                document.getElementById('promptError').classList.add('visible');
+                btn.textContent = originalText;
+                return;
+            }
+            if (resolvePrompt) {
+                const resolve = resolvePrompt;
+                resolvePrompt = null;
+                resolve(password);
+            }
+            if (pendingExportUrl) {
+                triggerDownload(pendingExportUrl, pendingExportFilename);
+                pendingExportUrl = null;
+                pendingExportFilename = null;
+                hidePrompt();
+            } else {
+                hidePrompt();
             }
         }
 
@@ -1178,54 +1191,36 @@
             try {
                 const password = await showPasswordPrompt(
                     'Import Backup',
-                    'Enter the password used to encrypt this backup.',
-                    true
+                    'Enter the password used to encrypt this backup.'
                 );
                 if (!password) {
                     event.target.value = '';
                     return;
                 }
 
-                const zipBlob = await file.arrayBuffer();
-                const zip = await JSZip.loadAsync(zipBlob);
-                const encryptedFile = zip.file('tasks.enc');
-                if (!encryptedFile) {
-                    alert('Invalid backup file: no encrypted tasks found.');
-                    event.target.value = '';
-                    return;
-                }
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('password', password);
 
-                const encryptedBytes = await encryptedFile.async('arraybuffer');
-                const tasksData = await decryptData(new Uint8Array(encryptedBytes), password);
+                const res = await fetch('/api/import', {
+                    method: 'POST',
+                    headers: { 'X-Password': masterPassword },
+                    body: formData
+                });
 
-                if (!Array.isArray(tasksData)) {
-                    alert('Invalid backup file: unexpected format.');
-                    event.target.value = '';
-                    return;
-                }
-
-                let count = 0;
-                for (const t of tasksData) {
-                    if (t.id && t.title) {
-                        await apiCreate({
-                            id: t.id,
-                            title: t.title,
-                            description: t.description || t.desc || '',
-                            priority: t.priority || 'none',
-                            status: t.status || 'todo',
-                            created_at: t.created_at || t.created || Date.now()
-                        });
-                        count++;
-                    }
+                const result = await res.json();
+                if (!res.ok) {
+                    throw new Error(result.error || 'Import failed');
                 }
 
                 await init();
-                alert(`Imported ${count} tasks.`);
+                alert(`Imported ${result.imported} tasks.`);
+                event.target.value = '';
             } catch (err) {
                 console.error('Import failed:', err);
-                alert('Import failed: incorrect password or invalid backup file.');
+                alert('Import failed: ' + err.message);
+                event.target.value = '';
             }
-            event.target.value = '';
         }
 
         // --- Keyboard ---
@@ -1240,7 +1235,7 @@
                 }
             }
             if (e.key === 'Enter' && document.getElementById('promptOverlay').classList.contains('active')) {
-                submitPrompt();
+                handlePromptConfirm();
             }
             if (e.key === 'Enter' && document.getElementById('modalOverlay').classList.contains('active')) {
                 if (e.target.tagName !== 'TEXTAREA') saveTask();

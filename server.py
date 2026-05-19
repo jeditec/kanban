@@ -4,8 +4,18 @@
 import json
 import sqlite3
 import os
+import time
+import pyminizip
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kanban.db')
+
+# Master password for simple authentication (set via KANBAN_PASSWORD env var)
+# Defaults to 'changeme' if not set — override with KANBAN_PASSWORD= to set a custom password
+# or KANBAN_PASSWORD='' to disable authentication entirely
+MASTER_PASSWORD = os.environ.get('KANBAN_PASSWORD', 'changeme')
+PASSWORD_HEADER = 'X-Password'
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kanban.db')
 
@@ -49,6 +59,46 @@ def _check_password(handler):
     return provided == MASTER_PASSWORD
 
 
+def _derive_key(password: str) -> bytes:
+    """Derive a 32-byte encryption key from a password using PBKDF2, then base64-encode for Fernet."""
+    import base64
+    salt = b'kanban_backup_salt_v1'
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    raw_key = kdf.derive(password.encode('utf-8'))
+    return base64.urlsafe_b64encode(raw_key)
+
+
+def _encrypt_data(data, password: str) -> bytes:
+    """Encrypt data using the password."""
+    import base64
+    raw_key = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'kanban_backup_salt_v1',
+        iterations=100000,
+    ).derive(password.encode('utf-8'))
+    fernet = Fernet(base64.urlsafe_b64encode(raw_key))
+    return fernet.encrypt(json.dumps(data).encode('utf-8'))
+
+
+def _decrypt_data(encrypted_data: bytes, password: str):
+    """Decrypt data using the password."""
+    import base64
+    raw_key = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'kanban_backup_salt_v1',
+        iterations=100000,
+    ).derive(password.encode('utf-8'))
+    fernet = Fernet(base64.urlsafe_b64encode(raw_key))
+    return json.loads(fernet.decrypt(encrypted_data).decode('utf-8'))
+
+
 class KanbanHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -66,9 +116,9 @@ class KanbanHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         content_len = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_len) if content_len else b'{}'
-        data = json.loads(body)
 
         if parsed.path == '/api/tasks':
+            data = json.loads(body)
             if not _check_password(self):
                 self._send_json(401, {'error': 'Unauthorized'})
                 return
@@ -79,6 +129,21 @@ class KanbanHandler(SimpleHTTPRequestHandler):
                 self._update_task(data)
             else:
                 self._create_task(data)
+        elif parsed.path == '/api/export':
+            data = json.loads(body)
+            self._export_zip(data.get('password', ''))
+        elif parsed.path == '/api/import':
+            content_type = self.headers.get('Content-Type', '')
+            if 'multipart/form-data' in content_type:
+                self._handle_multipart_import(body, content_len)
+            else:
+                data = json.loads(body)
+                password = data.get('password', '')
+                encrypted_b64 = data.get('encrypted', '')
+                if not encrypted_b64:
+                    self._send_error(400, 'Missing encrypted data')
+                    return
+                self._import_zip(encrypted_b64, password)
         else:
             self._send_error(404, 'Not found')
 
@@ -203,6 +268,161 @@ class KanbanHandler(SimpleHTTPRequestHandler):
         return time.strftime('%Y%m%d%H%M%S', __import__('time').gmtime()) + \
                str(random.randint(100000, 999999)) + \
                str(__import__('time').time_ns() % 100000)
+
+    def _send_binary(self, code, data, content_type='application/zip', filename='backup.zip'):
+        """Send a binary response."""
+        self.send_response(code)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Content-Length', len(data))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _export_zip(self, password):
+        """Create a password-protected ZIP with all tasks."""
+        if not password:
+            self._send_error(400, 'Password is required')
+            return
+
+        conn = get_db()
+        rows = conn.execute("SELECT * FROM tasks ORDER BY created_at ASC").fetchall()
+        conn.close()
+        tasks = [dict(r) for r in rows]
+
+        # Write tasks JSON to a temp file
+        json_path = f'/tmp/kanban-export-{int(time.time() * 1000)}.json'
+        with open(json_path, 'w') as f:
+            json.dump(tasks, f, indent=2)
+
+        # Create password-protected ZIP using pyminizip
+        zip_path = f'/tmp/kanban-backup-{time.strftime("%Y-%m-%d")}.zip'
+        pyminizip.compress(json_path, None, zip_path, password, 5)
+
+        # Read and send the ZIP
+        with open(zip_path, 'rb') as f:
+            zip_data = f.read()
+
+        # Cleanup temp files
+        os.unlink(json_path)
+        os.unlink(zip_path)
+
+        self._send_binary(200, zip_data, 'application/zip', f'kanban-backup-{time.strftime("%Y-%m-%d")}.zip')
+
+    def _import_from_zip(self, zip_path, password):
+        """Extract tasks from a password-protected ZIP and import them."""
+        # Create a temp dir for extraction
+        extract_dir = f'/tmp/kanban-import-{int(time.time() * 1000)}'
+        os.makedirs(extract_dir, exist_ok=True)
+
+        try:
+            # Extract using pyminizip (handles AES-encrypted ZIPs)
+            # pyminizip changes CWD during extraction, so save/restore it
+            saved_cwd = os.getcwd()
+            try:
+                pyminizip.uncompress(zip_path, password, extract_dir, 0)
+            except Exception:
+                self._send_error(400, 'Incorrect password or invalid backup file')
+                return
+            finally:
+                os.chdir(saved_cwd)
+
+            # Find the JSON file
+            json_files = [f for f in os.listdir(extract_dir) if f.endswith('.json')]
+            if not json_files:
+                self._send_error(400, 'Invalid backup format: no JSON file found')
+                return
+
+            json_path = os.path.join(extract_dir, json_files[0])
+            with open(json_path, 'r') as f:
+                tasks = json.load(f)
+
+            if not isinstance(tasks, list):
+                self._send_error(400, 'Invalid backup format')
+                return
+
+            count = 0
+            conn = get_db()
+            for t in tasks:
+                if t.get('id') and t.get('title'):
+                    conn.execute(
+                        "INSERT OR REPLACE INTO tasks VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            t.get('id'),
+                            t.get('title'),
+                            t.get('description', t.get('desc', '')),
+                            t.get('priority', 'none'),
+                            t.get('status', 'todo'),
+                            t.get('created_at', t.get('created', int(time.time() * 1000))),
+                        )
+                    )
+                    count += 1
+            conn.commit()
+            conn.close()
+            self._send_json(200, {'imported': count})
+        finally:
+            # Cleanup
+            import shutil
+            shutil.rmtree(extract_dir, ignore_errors=True)
+
+    def _import_zip(self, encrypted_b64, password):
+        """Import tasks from base64-encoded encrypted ZIP data."""
+        import base64
+        try:
+            zip_data = base64.b64decode(encrypted_b64)
+        except Exception:
+            self._send_error(400, 'Invalid encrypted data format')
+            return
+
+        zip_path = f'/tmp/kanban-import-{int(time.time() * 1000)}.zip'
+        with open(zip_path, 'wb') as f:
+            f.write(zip_data)
+
+        try:
+            self._import_from_zip(zip_path, password)
+        finally:
+            os.unlink(zip_path)
+
+    def _handle_multipart_import(self, body, content_len):
+        """Handle multipart/form-data import (direct ZIP file upload)."""
+        from email.parser import BytesParser
+        from email.policy import HTTP
+
+        content_type = self.headers.get('Content-Type', '')
+        if 'boundary=' not in content_type:
+            self._send_error(400, 'Missing boundary in Content-Type')
+            return
+        boundary = content_type.split('boundary=')[-1].strip()
+
+        header = f'Content-Type: multipart/form-data; boundary={boundary}\r\n\r\n'.encode()
+        msg = BytesParser(policy=HTTP).parsebytes(header + body)
+
+        password = ''
+        zip_data = None
+
+        if isinstance(msg.get_payload(), list):
+            for sub in msg.get_payload():
+                name = sub.get_param('name', header='Content-Disposition')
+                if name == 'password':
+                    password = sub.get_payload(decode=True).decode('utf-8')
+                elif sub.get_filename():
+                    zip_data = sub.get_payload(decode=True)
+
+        if not password:
+            self._send_error(400, 'Missing password')
+            return
+        if not zip_data:
+            self._send_error(400, 'Missing file')
+            return
+
+        zip_path = f'/tmp/kanban-import-{int(time.time() * 1000)}.zip'
+        with open(zip_path, 'wb') as f:
+            f.write(zip_data)
+
+        try:
+            self._import_from_zip(zip_path, password)
+        finally:
+            os.unlink(zip_path)
 
     # CORS preflight
     def do_OPTIONS(self):

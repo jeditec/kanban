@@ -6,6 +6,9 @@ WORKDIR /app
 COPY server.py .
 COPY index.html .
 
+# Install dependencies
+RUN pip install --no-cache-dir pyminizip
+
 # Environment variables
 ENV KANBAN_HTTP_PORT=8060
 ENV KANBAN_PASSWORD=changeme
