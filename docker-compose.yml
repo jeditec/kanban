@@ -5,7 +5,10 @@ services:
       dockerfile: Dockerfile
     container_name: kanban
     ports:
-      - "${KANBAN_PORT:-8060}:8060"
+      - "${KANBAN_HTTP_PORT:-8060}:8060"
+    environment:
+      - KANBAN_PASSWORD=${KANBAN_PASSWORD:-changeme}
+      - KANBAN_HTTP_PORT=${KANBAN_HTTP_PORT:-8060}
     volumes:
       - kanban-data:/app
     restart: unless-stopped

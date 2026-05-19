@@ -101,10 +101,19 @@ docker compose up -d
 
 Then open **http://localhost:8060** in your browser.
 
-**Custom port** (default is 8060):
+**Configure port and password** via a `.env` file in the `kanban/` directory:
 
 ```bash
-KANBAN_PORT=3000 docker compose up -d
+# .env
+echo "KANBAN_HTTP_PORT=3000" > .env
+echo "KANBAN_PASSWORD=mysecurepassword" >> .env
+docker compose up -d
+```
+
+Or set them inline:
+
+```bash
+KANBAN_HTTP_PORT=3000 KANBAN_PASSWORD=mysecurepassword docker compose up -d
 ```
 
 **Manage the container:**
@@ -128,52 +137,46 @@ docker compose up -d --build
 
 ### Running with pre-built image (no local build)
 
-To use the **pre-built image from GitHub Container Registry** instead of building locally, modify `docker-compose.yml` or use an override:
+To use the **pre-built image from GitHub Container Registry** instead of building locally:
 
 ```bash
-# Create a custom docker-compose file
+# Set your configuration
+echo "KANBAN_HTTP_PORT=3000" > .env
+echo "KANBAN_PASSWORD=mysecurepassword" >> .env
+
+# Use the pre-built image (it ignores the build step via override)
 cat > docker-compose.override.yml << 'EOF'
 services:
   kanban:
     build:
-      context: .
-      dockerfile: Dockerfile
+      disable: true
     image: ghcr.io/jeditec/kanban:latest
-    container_name: kanban
-    ports:
-      - "${KANBAN_PORT:-8060}:8060"
-    volumes:
-      - kanban-data:/app
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8060/')"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-volumes:
-  kanban-data:
-    driver: local
 EOF
 
-docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+docker compose up -d
 ```
 
 Or simply run directly:
 
 ```bash
-docker run -d --name kanban -p 8060:8060 -v kanban-data:/app ghcr.io/jeditec/kanban:latest
+docker run -d --name kanban \
+  -p 3000:8060 \
+  -e KANBAN_PASSWORD=mysecurepassword \
+  -e KANBAN_HTTP_PORT=8060 \
+  -v kanban-data:/app \
+  ghcr.io/jeditec/kanban:latest
 ```
 
 ### Running with Docker (single container)
 
 ```bash
 # Use the pre-built image from GitHub Container Registry
-docker run -d --name kanban -p 8060:8060 -v kanban-data:/app ghcr.io/jeditec/kanban:latest
+# (change ports as needed)
+docker run -d --name kanban -p 8060:8060 -e KANBAN_PASSWORD=changeme -e KANBAN_HTTP_PORT=8060 -v kanban-data:/app ghcr.io/jeditec/kanban:latest
 
 # Or build locally
 docker build -t kanban .
-docker run -d --name kanban -p 8060:8060 -v kanban-data:/app kanban
+docker run -d --name kanban -p 8060:8060 -e KANBAN_PASSWORD=changeme -e KANBAN_HTTP_PORT=8060 -v kanban-data:/app kanban
 ```
 
 ### Running the Server (native)
