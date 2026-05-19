@@ -21,13 +21,17 @@
             --shadow: 0 4px 15px rgba(0,0,0,0.3);
             --radius: 12px;
             --transition: 0.2s ease;
+            --login-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            --header-bg: linear-gradient(135deg, #16213e, #0f3460);
+            --select-bg: rgba(255,255,255,0.08);
+            --select-border: rgba(255,255,255,0.15);
         }
 
         /* Login Overlay */
         .login-overlay {
             position: fixed;
             inset: 0;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            background: var(--login-bg);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -37,13 +41,13 @@
         .login-overlay.hidden { display: none; }
 
         .login-card {
-            background: #16213e;
-            border: 1px solid #0f3460;
+            background: var(--column-bg);
+            border: 1px solid var(--card-bg);
             border-radius: 16px;
             padding: 40px;
             width: 100%;
             max-width: 380px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             text-align: center;
         }
 
@@ -112,7 +116,7 @@
         }
 
         header {
-            background: linear-gradient(135deg, #16213e, #0f3460);
+            background: var(--header-bg);
             padding: 20px 30px;
             display: flex;
             align-items: center;
@@ -168,6 +172,53 @@
             color: var(--text);
         }
         .btn-secondary:hover { background: rgba(255,255,255,0.2); }
+
+        /* Theme Selector */
+        .theme-select-wrapper {
+            position: relative;
+            margin-right: 5px;
+        }
+
+        .theme-select {
+            appearance: none;
+            -webkit-appearance: none;
+            padding: 7px 32px 7px 12px;
+            background: var(--select-bg);
+            border: 1.5px solid var(--select-border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition);
+            font-family: inherit;
+            outline: none;
+        }
+
+        .theme-select:hover {
+            border-color: var(--accent);
+            background: rgba(255,255,255,0.15);
+        }
+
+        .theme-select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(233,69,96,0.3);
+        }
+
+        .theme-select option {
+            background: var(--column-bg);
+            color: var(--text);
+        }
+
+        .theme-select-wrapper::after {
+            content: '🎨';
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            font-size: 0.85rem;
+        }
 
         .btn-danger {
             background: #c0392b;
@@ -426,7 +477,7 @@
 
         .form-group textarea { resize: vertical; min-height: 80px; }
 
-        .form-group select option { background: var(--column-bg); }
+        .form-group select option { background: var(--column-bg); color: var(--text); }
 
         .modal-actions {
             display: flex;
@@ -581,6 +632,20 @@
         <h1>📋 Kanban Board</h1>
         <div class="header-actions">
             <span class="stats" id="stats"></span>
+            <div class="theme-select-wrapper">
+                <select class="theme-select" id="themeSelector" onchange="setTheme(this.value)">
+                    <option value="nord">Nord</option>
+                    <option value="tokyo-night">Tokyo Night</option>
+                    <option value="dracula">Dracula</option>
+                    <option value="one-dark">One Dark</option>
+                    <option value="monokai">Monokai</option>
+                    <option value="github-dark">GitHub Dark</option>
+                    <option value="github-light">GitHub Light</option>
+                    <option value="solarized-light">Solarized Light</option>
+                    <option value="catppuccin-latte">Catppuccin Latte</option>
+                    <option value="ayu-light">Ayu Light</option>
+                </select>
+            </div>
             <button class="btn btn-secondary" onclick="exportData()">📥 Export</button>
             <button class="btn btn-secondary" onclick="document.getElementById('importInput').click()">📤 Import</button>
             <input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(event)">
@@ -721,6 +786,166 @@
         let editingId = null;
         const API = '/api/tasks';
 
+        // --- Theme System ---
+        const themes = {
+            'nord': {
+                name: 'Nord', type: 'dark',
+                root: {
+                    '--bg': '#2e3440', '--column-bg': '#3b4252', '--card-bg': '#434c5e',
+                    '--card-hover': '#4c566a', '--text': '#eceff4', '--text-muted': '#d8dee9',
+                    '--accent': '#88c0d0', '--accent-hover': '#8fbcbb',
+                    '--col-todo': '#5e81ac', '--col-progress': '#88c0d0',
+                    '--col-review': '#bf616a', '--col-done': '#a3be8c',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.4)',
+                    '--login-bg': 'linear-gradient(135deg, #2e3440 0%, #3b4252 50%, #434c5e 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #3b4252, #434c5e)',
+                    '--select-bg': 'rgba(255,255,255,0.08)', '--select-border': 'rgba(255,255,255,0.15)'
+                }
+            },
+            'tokyo-night': {
+                name: 'Tokyo Night', type: 'dark',
+                root: {
+                    '--bg': '#1a1b26', '--column-bg': '#24283b', '--card-bg': '#2a2e3f',
+                    '--card-hover': '#32374c', '--text': '#c0caf5', '--text-muted': '#565f89',
+                    '--accent': '#7aa2f7', '--accent-hover': '#89b4fa',
+                    '--col-todo': '#9d7cd8', '--col-progress': '#7aa2f7',
+                    '--col-review': '#f7768e', '--col-done': '#9ece6a',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.5)',
+                    '--login-bg': 'linear-gradient(135deg, #1a1b26 0%, #24283b 50%, #2a2e3f 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #24283b, #2a2e3f)',
+                    '--select-bg': 'rgba(255,255,255,0.06)', '--select-border': 'rgba(255,255,255,0.12)'
+                }
+            },
+            'dracula': {
+                name: 'Dracula', type: 'dark',
+                root: {
+                    '--bg': '#282a36', '--column-bg': '#343746', '--card-bg': '#44475a',
+                    '--card-hover': '#4f5266', '--text': '#f8f8f2', '--text-muted': '#6272a4',
+                    '--accent': '#ff79c6', '--accent-hover': '#ff92d0',
+                    '--col-todo': '#bd93f9', '--col-progress': '#8be9fd',
+                    '--col-review': '#ff5555', '--col-done': '#50fa7b',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.5)',
+                    '--login-bg': 'linear-gradient(135deg, #282a36 0%, #343746 50%, #44475a 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #343746, #44475a)',
+                    '--select-bg': 'rgba(255,255,255,0.08)', '--select-border': 'rgba(255,255,255,0.15)'
+                }
+            },
+            'one-dark': {
+                name: 'One Dark', type: 'dark',
+                root: {
+                    '--bg': '#282c34', '--column-bg': '#21252b', '--card-bg': '#2c313a',
+                    '--card-hover': '#353b45', '--text': '#abb2bf', '--text-muted': '#5c6370',
+                    '--accent': '#61afef', '--accent-hover': '#72bdf7',
+                    '--col-todo': '#c678dd', '--col-progress': '#61afef',
+                    '--col-review': '#e06c75', '--col-done': '#98c379',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.45)',
+                    '--login-bg': 'linear-gradient(135deg, #282c34 0%, #21252b 50%, #2c313a 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #21252b, #2c313a)',
+                    '--select-bg': 'rgba(255,255,255,0.06)', '--select-border': 'rgba(255,255,255,0.12)'
+                }
+            },
+            'monokai': {
+                name: 'Monokai', type: 'dark',
+                root: {
+                    '--bg': '#272822', '--column-bg': '#1e1f1c', '--card-bg': '#3e3d32',
+                    '--card-hover': '#4a493f', '--text': '#f8f8f2', '--text-muted': '#75715e',
+                    '--accent': '#f92672', '--accent-hover': '#f43682',
+                    '--col-todo': '#ae81ff', '--col-progress': '#66d9ef',
+                    '--col-review': '#f92672', '--col-done': '#a6e22e',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.5)',
+                    '--login-bg': 'linear-gradient(135deg, #272822 0%, #1e1f1c 50%, #3e3d32 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #1e1f1c, #3e3d32)',
+                    '--select-bg': 'rgba(255,255,255,0.06)', '--select-border': 'rgba(255,255,255,0.12)'
+                }
+            },
+            'github-dark': {
+                name: 'GitHub Dark', type: 'dark',
+                root: {
+                    '--bg': '#0d1117', '--column-bg': '#161b22', '--card-bg': '#21262d',
+                    '--card-hover': '#30363d', '--text': '#c9d1d9', '--text-muted': '#8b949e',
+                    '--accent': '#58a6ff', '--accent-hover': '#79b8ff',
+                    '--col-todo': '#bc8cff', '--col-progress': '#58a6ff',
+                    '--col-review': '#f78166', '--col-done': '#3fb950',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.5)',
+                    '--login-bg': 'linear-gradient(135deg, #0d1117 0%, #161b22 50%, #21262d 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #161b22, #21262d)',
+                    '--select-bg': 'rgba(255,255,255,0.06)', '--select-border': 'rgba(255,255,255,0.15)'
+                }
+            },
+            'github-light': {
+                name: 'GitHub Light', type: 'light',
+                root: {
+                    '--bg': '#ffffff', '--column-bg': '#f6f8fa', '--card-bg': '#ffffff',
+                    '--card-hover': '#f3f3f3', '--text': '#1f2328', '--text-muted': '#656d76',
+                    '--accent': '#0969da', '--accent-hover': '#0550ae',
+                    '--col-todo': '#8250df', '--col-progress': '#0969da',
+                    '--col-review': '#cf222e', '--col-done': '#1a7f37',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.08)',
+                    '--login-bg': 'linear-gradient(135deg, #f6f8fa 0%, #eaeef2 50%, #d0d7de 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #f6f8fa, #eaeef2)',
+                    '--select-bg': '#ffffff', '--select-border': '#d0d7de'
+                }
+            },
+            'solarized-light': {
+                name: 'Solarized Light', type: 'light',
+                root: {
+                    '--bg': '#fdf6e3', '--column-bg': '#eee8d5', '--card-bg': '#fdf6e3',
+                    '--card-hover': '#eee8c5', '--text': '#657b83', '--text-muted': '#93a1a1',
+                    '--accent': '#268bd2', '--accent-hover': '#2aa1e8',
+                    '--col-todo': '#6c71c4', '--col-progress': '#2aa198',
+                    '--col-review': '#dc322f', '--col-done': '#859900',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.08)',
+                    '--login-bg': 'linear-gradient(135deg, #fdf6e3 0%, #eee8d5 50%, #e4dcc8 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #eee8d5, #fdf6e3)',
+                    '--select-bg': '#ffffff', '--select-border': '#d3cbb8'
+                }
+            },
+            'catppuccin-latte': {
+                name: 'Catppuccin Latte', type: 'light',
+                root: {
+                    '--bg': '#eff1f5', '--column-bg': '#e6e9ef', '--card-bg': '#ffffff',
+                    '--card-hover': '#dce0e8', '--text': '#4c4f69', '--text-muted': '#7c7f93',
+                    '--accent': '#1e66f5', '--accent-hover': '#2a7ae4',
+                    '--col-todo': '#8839ef', '--col-progress': '#209fb5',
+                    '--col-review': '#d20f39', '--col-done': '#40a02b',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.08)',
+                    '--login-bg': 'linear-gradient(135deg, #eff1f5 0%, #e6e9ef 50%, #dce0e8 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #e6e9ef, #eff1f5)',
+                    '--select-bg': '#ffffff', '--select-border': '#ccd0da'
+                }
+            },
+            'ayu-light': {
+                name: 'Ayu Light', type: 'light',
+                root: {
+                    '--bg': '#ffffff', '--column-bg': '#fcfcfc', '--card-bg': '#ffffff',
+                    '--card-hover': '#f2f2f2', '--text': '#5c6168', '--text-muted': '#94999f',
+                    '--accent': '#3399cc', '--accent-hover': '#3aaddb',
+                    '--col-todo': '#aa79c8', '--col-progress': '#3399cc',
+                    '--col-review': '#e67e80', '--col-done': '#78bd65',
+                    '--shadow': '0 4px 15px rgba(0,0,0,0.08)',
+                    '--login-bg': 'linear-gradient(135deg, #ffffff 0%, #fcfcfc 50%, #f5f5f5 100%)',
+                    '--header-bg': 'linear-gradient(135deg, #fcfcfc, #f2f2f2)',
+                    '--select-bg': '#ffffff', '--select-border': '#e5e5e5'
+                }
+            }
+        };
+
+        function setTheme(name) {
+            const theme = themes[name];
+            if (!theme) return;
+            const root = document.documentElement;
+            for (const [prop, value] of Object.entries(theme.root)) {
+                root.style.setProperty(prop, value);
+            }
+            localStorage.setItem('kanban-theme', name);
+            document.getElementById('themeSelector').value = name;
+        }
+
+        function loadTheme() {
+            const saved = localStorage.getItem('kanban-theme') || 'nord';
+            setTheme(saved);
+        }
+
         // --- API Helpers ---
         function apiHeaders() {
             const headers = { 'Content-Type': 'application/json' };
@@ -804,6 +1029,7 @@
 
         // --- Init ---
         async function init() {
+            loadTheme();
             try {
                 const res = await fetch(API, { headers: apiHeaders() });
                 if (res.status === 401) {
