@@ -642,7 +642,7 @@
         }
 
         async function apiGet() {
-            const res = await fetch(API);
+            const res = await fetch(API, { headers: apiHeaders() });
             return res.json();
         }
 

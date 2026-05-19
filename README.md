@@ -200,10 +200,10 @@ Edit CSS variables in `index.html` under `:root`:
 
 ### Master Password
 
-Set a master password by providing the `KANBAN_PASSWORD` environment variable. When set, users must enter the password to access the board — a simple login screen appears on page load.
+A master password is required to access the board. The default password is **`changeme`**. Set `KANBAN_PASSWORD` to change it.
 
 ```bash
-# Native
+# Native (custom password)
 KANBAN_PASSWORD=mysecret python3 server.py
 
 # Docker
@@ -220,7 +220,7 @@ docker compose up -d
 #       - KANBAN_PASSWORD=mysecret
 ```
 
-Without `KANBAN_PASSWORD` set, no authentication is required (open access).
+To **disable authentication entirely**, set `KANBAN_PASSWORD=''` (empty string).
 
 ## Technologies
 

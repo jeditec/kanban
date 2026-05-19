@@ -10,7 +10,9 @@ from urllib.parse import urlparse, parse_qs
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kanban.db')
 
 # Master password for simple authentication (set via KANBAN_PASSWORD env var)
-MASTER_PASSWORD = os.environ.get('KANBAN_PASSWORD', '')
+# Defaults to 'changeme' if not set — override with KANBAN_PASSWORD= to set a custom password
+# or KANBAN_PASSWORD='' to disable authentication entirely
+MASTER_PASSWORD = os.environ.get('KANBAN_PASSWORD', 'changeme')
 PASSWORD_HEADER = 'X-Password'
 
 
