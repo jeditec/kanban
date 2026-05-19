@@ -6,12 +6,16 @@ WORKDIR /app
 COPY server.py .
 COPY index.html .
 
-# Expose the default port
-EXPOSE 8060
+# Environment variables
+ENV KANBAN_HTTP_PORT=8060
+ENV KANBAN_PASSWORD=changeme
+
+# Expose the configured port
+EXPOSE ${KANBAN_HTTP_PORT}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8060/')" || exit 1
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:${KANBAN_HTTP_PORT}/')" || exit 1
 
 # Start the server
 CMD ["python3", "server.py"]
