@@ -49,7 +49,7 @@ services:
       - KANBAN_PASSWORD=${KANBAN_PASSWORD:-changeme}
       - KANBAN_HTTP_PORT=${KANBAN_HTTP_PORT:-8060}
     volumes:
-      - ./data:/app
+      - ./data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${KANBAN_HTTP_PORT:-8060}/')"]
