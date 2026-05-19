@@ -41,9 +41,7 @@ Create a `docker-compose.yml` for full control:
 ```yaml
 services:
   kanban:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/jeditec/kanban:main
     container_name: kanban
     ports:
       - "${KANBAN_HTTP_PORT:-8060}:${KANBAN_HTTP_PORT:-8060}"
