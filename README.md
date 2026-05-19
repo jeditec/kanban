@@ -99,9 +99,9 @@ cd kanban
 docker compose up -d
 ```
 
-Then open **http://localhost:8040** in your browser.
+Then open **http://localhost:8060** in your browser.
 
-**Custom port** (default is 8040):
+**Custom port** (default is 8060):
 
 ```bash
 KANBAN_PORT=3000 docker compose up -d
@@ -130,7 +130,7 @@ docker compose up -d --build
 
 ```bash
 docker build -t kanban .
-docker run -d --name kanban -p 8040:8040 -v kanban-data:/app kanban
+docker run -d --name kanban -p 8060:8060 -v kanban-data:/app kanban
 ```
 
 ### Running the Server (native)
@@ -139,10 +139,12 @@ docker run -d --name kanban -p 8040:8040 -v kanban-data:/app kanban
 cd kanban
 python3 server.py
 # Or specify a custom port:
-python3 server.py 8040
+python3 server.py 3000
 ```
 
-Then open **http://localhost:8040** in your browser.
+The default port is **8060** (configurable via `KANBAN_HTTP_PORT`).
+
+Then open **http://localhost:8060** in your browser.
 
 ### Docker Architecture
 
@@ -174,8 +176,14 @@ cp kanban.db kanban-backup.db
 ### Changing the Port
 
 ```bash
+# Via command line argument
 python3 server.py 3000
+
+# Via environment variable
+KANBAN_HTTP_PORT=3000 python3 server.py
 ```
+
+Default port is **8060**.
 
 ### Theming
 

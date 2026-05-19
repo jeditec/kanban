@@ -223,7 +223,9 @@ class ReusableHTTPServer(HTTPServer):
 
 if __name__ == '__main__':
     import sys
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8040
+    port = int(os.environ.get('KANBAN_HTTP_PORT', '8060'))
+    if len(sys.argv) > 1:
+        port = int(sys.argv[1])
 
     init_db()
     # Seed demo data if empty
