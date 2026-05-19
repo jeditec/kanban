@@ -41,25 +41,23 @@ Create a `docker-compose.yml` for full control:
 ```yaml
 services:
   kanban:
-    image: ghcr.io/jeditec/kanban:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: kanban
     ports:
-      - "3000:8060"
+      - "${KANBAN_HTTP_PORT:-8060}:${KANBAN_HTTP_PORT:-8060}"
     environment:
-      - KANBAN_HTTP_PORT=8060
-      - KANBAN_PASSWORD=mysecurepassword
+      - KANBAN_PASSWORD=${KANBAN_PASSWORD:-changeme}
+      - KANBAN_HTTP_PORT=${KANBAN_HTTP_PORT:-8060}
     volumes:
-      - kanban-data:/app
+      - ./data:/app
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8060/')"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${KANBAN_HTTP_PORT:-8060}/')"]
       interval: 30s
       timeout: 5s
       retries: 3
-
-volumes:
-  kanban-data:
-    driver: local
 ```
 
 Then run:
@@ -80,15 +78,15 @@ docker compose restart
 # View logs
 docker compose logs -f
 
-# Remove container and volume
-docker compose down -v
+# Remove container
+docker compose down
 ```
 
 ### Architecture
 
 ```
 kanban/
-├── docker-compose.yml  # Full orchestration: port, password, volume, healthcheck
+├── docker-compose.yml  # Full orchestration: port, password, bind mount, healthcheck
 ├── README.md           # This file
 └── package.json        # (optional)
 ```
