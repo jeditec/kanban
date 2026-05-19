@@ -24,9 +24,9 @@ A modern, feature-rich Kanban board web application with drag-and-drop task mana
 
 ## Getting Started
 
-### Quick Start — Everything Inline
+### Quick Start — Inline
 
-Run with a custom port and password directly in the command:
+Run everything in one command:
 
 ```bash
 KANBAN_HTTP_PORT=3000 KANBAN_PASSWORD=mysecurepassword docker compose up -d
@@ -34,39 +34,41 @@ KANBAN_HTTP_PORT=3000 KANBAN_PASSWORD=mysecurepassword docker compose up -d
 
 Open **http://localhost:3000** in your browser.
 
-### Using a `.env` File
+### Full Docker Compose Configuration
 
-For persistent configuration, create a `.env` file:
+Create a `docker-compose.yml` for full control:
 
-```bash
-echo "KANBAN_HTTP_PORT=3000" > .env
-echo "KANBAN_PASSWORD=mysecurepassword" >> .env
-docker compose up -d
-```
-
-Then just run:
-
-```bash
-docker compose up -d
-```
-
-### Using the Pre-built Image (No Local Build)
-
-By default, `docker compose up` builds the image locally. To use the pre-built image from GitHub Container Registry instead:
-
-```bash
-cat > docker-compose.override.yml << 'EOF'
+```yaml
 services:
   kanban:
-    build:
-      disable: true
     image: ghcr.io/jeditec/kanban:latest
-EOF
+    container_name: kanban
+    ports:
+      - "3000:8060"
+    environment:
+      - KANBAN_HTTP_PORT=8060
+      - KANBAN_PASSWORD=mysecurepassword
+    volumes:
+      - kanban-data:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8060/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
-KANBAN_HTTP_PORT=3000 KANBAN_PASSWORD=mysecurepassword docker compose up -d
+volumes:
+  kanban-data:
+    driver: local
 ```
 
-### Manage the Container
+Then run:
+
+```bash
+docker compose up -d
+```
+
+## Manage the Container
 
 ```bash
 # Stop
@@ -78,28 +80,18 @@ docker compose restart
 # View logs
 docker compose logs -f
 
-# Rebuild locally after code changes
-docker compose up -d --build
+# Remove container and volume
+docker compose down -v
 ```
 
 ### Architecture
 
 ```
 kanban/
-├── Dockerfile          # Container image definition
-├── docker-compose.yml  # Orchestration with port, password, volume
-├── .dockerignore       # Files excluded from build context
-├── index.html          # Frontend: HTML + CSS + vanilla JavaScript
-├── server.py           # Backend: Python HTTP server with SQLite
-├── .env                # Your port & password configuration
+├── docker-compose.yml  # Full orchestration: port, password, volume, healthcheck
 ├── README.md           # This file
 └── package.json        # (optional)
 ```
-
-The `docker-compose.yml` uses:
-- **`KANBAN_HTTP_PORT`** — Maps host port to container port (default `8060`)
-- **`KANBAN_PASSWORD`** — Master password for access (default `changeme`)
-- **`kanban-data`** volume — Persists the SQLite database across restarts
 
 ## API Reference
 
@@ -131,17 +123,19 @@ The `docker-compose.yml` uses:
 
 A master password is required to access the board. Default is **`changeme`**.
 
-| Scenario | Configuration |
-|----------|---------------|
-| Custom password | `KANBAN_PASSWORD=mysecret` |
-| Disable auth | `KANBAN_PASSWORD=''` |
+Set it:
+- Inline: `KANBAN_PASSWORD=mysecret docker compose up -d`
+- `docker-compose.yml`: `environment: [KANBAN_PASSWORD=mysecret]`
+
+To disable auth, set `KANBAN_PASSWORD=''`.
 
 ### Changing the Port
 
-| Scenario | Configuration |
-|----------|---------------|
-| Custom port | `KANBAN_HTTP_PORT=3000` |
-| Default port | `8060` |
+Set it:
+- Inline: `KANBAN_HTTP_PORT=3000 docker compose up -d`
+- `docker-compose.yml` ports mapping: `"3000:8060"`
+
+Default port is **8060**.
 
 ## License
 
