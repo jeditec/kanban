@@ -694,9 +694,9 @@
             const password = document.getElementById('loginPassword').value;
             if (!password) return;
 
-            // Try authenticating with a quick API call
+            // Try authenticating with the password in the header
             try {
-                const res = await fetch(API);
+                const res = await fetch(API, { headers: { 'X-Password': password } });
                 if (res.status === 200) {
                     masterPassword = password;
                     hideLogin();
@@ -716,7 +716,7 @@
         // --- Init ---
         async function init() {
             try {
-                const res = await fetch(API);
+                const res = await fetch(API, { headers: apiHeaders() });
                 if (res.status === 401) {
                     showLogin();
                     return;

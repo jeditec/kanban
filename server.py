@@ -209,7 +209,7 @@ class KanbanHandler(SimpleHTTPRequestHandler):
         self.send_response(204)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Action')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Action, X-Password')
         self.end_headers()
 
     def log_message(self, format, *args):
