@@ -84,9 +84,20 @@ docker compose down
 
 ```
 kanban/
-├── docker-compose.yaml  # Full orchestration: port, password, bind mount, healthcheck
-├── README.md           # This file
-└── package.json        # (optional)
+├── Dockerfile              # Multi-stage build: Python 3.12, exposes port 8060
+├── docker-compose.yaml     # Full orchestration: port, password, bind mount, healthcheck
+├── server.py               # Python HTTP server: REST API + SQLite + auth + CORS
+├── index.html              # Frontend: Kanban board with drag-and-drop UI
+├── .dockerignore           # Excludes .git, .env, etc. from build context
+├── .env.example            # Environment variable template
+├── README.md               # This file
+└── kanban.db               # SQLite database (created at runtime in ./data)
+```
+
+```
+Browser (port 8060)  →  server.py  →  SQLite (./data/kanban.db)
+     │                      │
+     └── X-Password header   └── /api/tasks  (GET, POST, PUT, DELETE)
 ```
 
 ## API Reference
