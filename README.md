@@ -126,9 +126,52 @@ docker compose logs -f
 docker compose up -d --build
 ```
 
+### Running with pre-built image (no local build)
+
+To use the **pre-built image from GitHub Container Registry** instead of building locally, modify `docker-compose.yml` or use an override:
+
+```bash
+# Create a custom docker-compose file
+cat > docker-compose.override.yml << 'EOF'
+services:
+  kanban:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/jeditec/kanban:latest
+    container_name: kanban
+    ports:
+      - "${KANBAN_PORT:-8060}:8060"
+    volumes:
+      - kanban-data:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8060/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  kanban-data:
+    driver: local
+EOF
+
+docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+```
+
+Or simply run directly:
+
+```bash
+docker run -d --name kanban -p 8060:8060 -v kanban-data:/app ghcr.io/jeditec/kanban:latest
+```
+
 ### Running with Docker (single container)
 
 ```bash
+# Use the pre-built image from GitHub Container Registry
+docker run -d --name kanban -p 8060:8060 -v kanban-data:/app ghcr.io/jeditec/kanban:latest
+
+# Or build locally
 docker build -t kanban .
 docker run -d --name kanban -p 8060:8060 -v kanban-data:/app kanban
 ```
