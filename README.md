@@ -20,6 +20,9 @@ A modern, feature-rich Kanban board web application with drag-and-drop task mana
 
 ```
 kanban/
+├── Dockerfile          # Container image definition
+├── docker-compose.yml  # Multi-container orchestration
+├── .dockerignore       # Files excluded from build context
 ├── index.html          # Frontend: HTML + CSS + vanilla JavaScript
 ├── server.py           # Backend: Python HTTP server with SQLite
 ├── kanban.db           # Database: SQLite storage (auto-created)
@@ -83,10 +86,53 @@ CREATE TABLE tasks (
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.8+ **or** Docker + Docker Compose
 - A modern web browser
 
-### Running the Server
+### Running with Docker (Recommended)
+
+The easiest way to run Kanban is with Docker Compose:
+
+```bash
+cd kanban
+docker compose up -d
+```
+
+Then open **http://localhost:8040** in your browser.
+
+**Custom port** (default is 8040):
+
+```bash
+KANBAN_PORT=3000 docker compose up -d
+```
+
+**Manage the container:**
+
+```bash
+# Start
+docker compose up -d
+
+# Stop
+docker compose down
+
+# Restart
+docker compose restart
+
+# View logs
+docker compose logs -f
+
+# Rebuild after changes
+docker compose up -d --build
+```
+
+### Running with Docker (single container)
+
+```bash
+docker build -t kanban .
+docker run -d --name kanban -p 8040:8040 -v kanban-data:/app kanban
+```
+
+### Running the Server (native)
 
 ```bash
 cd kanban
@@ -96,6 +142,22 @@ python3 server.py 8040
 ```
 
 Then open **http://localhost:8040** in your browser.
+
+### Docker Architecture
+
+```
+kanban/
+├── Dockerfile          # Container image definition
+├── docker-compose.yml  # Multi-container orchestration
+├── .dockerignore       # Files excluded from build context
+├── index.html          # Frontend
+├── server.py           # Backend API server
+├── kanban.db           # Database: SQLite (persisted via volume)
+├── README.md           # This file
+└── package.json        # (optional)
+```
+
+The `docker-compose.yml` uses a named volume (`kanban-data`) to persist the SQLite database across container restarts and recreations.
 
 ### Database
 
@@ -138,6 +200,7 @@ Edit CSS variables in `index.html` under `:root`:
 - **Frontend:** HTML5, CSS3, Vanilla JavaScript (ES6+)
 - **Backend:** Python 3
 - **Database:** SQLite
+- **Containerization:** Docker & Docker Compose
 - **No dependencies required** — runs on pure Python standard library
 
 ## License
