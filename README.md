@@ -124,6 +124,49 @@ Browser (port 8060)  →  server.py  →  SQLite (./data/kanban.db)
 }
 ```
 
+### Curl Examples
+
+All requests require the `X-Password` header. Change `changeme` to your actual password.
+
+**Get all tasks**
+
+```bash
+curl -s -H "X-Password: changeme" http://localhost:8060/api/tasks | python3 -m json.tool
+```
+
+**Create a task**
+
+```bash
+curl -s -X POST \
+  -H "X-Password: changeme" \
+  -H "Content-Type: application/json" \
+  -H "X-Action: create" \
+  -d '{"title":"Deploy to production","description":"Push the latest image","priority":"high","status":"todo"}' \
+  http://localhost:8060/api/tasks
+```
+
+**Update a task**
+
+```bash
+curl -s -X PUT \
+  -H "X-Password: changeme" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"task-id","title":"Updated title","status":"in-progress"}' \
+  http://localhost:8060/api/tasks
+```
+
+**Delete a task**
+
+```bash
+curl -s -X DELETE \
+  -H "X-Password: changeme" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"task-id"}' \
+  http://localhost:8060/api/tasks
+```
+
+**Note:** `id` is auto-generated if omitted. `created_at` defaults to the current timestamp if omitted.
+
 ## Security
 
 ### Master Password
