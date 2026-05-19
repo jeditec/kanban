@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kanban Board</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --bg: #1a1a2e;
@@ -479,6 +480,80 @@
             font-size: 0.85rem;
         }
 
+        /* Password Prompt Modal */
+        .prompt-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .prompt-overlay.active { display: flex; }
+
+        .prompt-modal {
+            background: var(--column-bg);
+            border-radius: var(--radius);
+            padding: 30px;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+
+        .prompt-modal .prompt-icon {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+        }
+
+        .prompt-modal h3 {
+            margin-bottom: 8px;
+            font-size: 1.2rem;
+        }
+
+        .prompt-modal .prompt-desc {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .prompt-modal .prompt-error {
+            color: var(--accent);
+            font-size: 0.82rem;
+            min-height: 1.2em;
+            margin-bottom: 10px;
+            display: none;
+        }
+
+        .prompt-modal .prompt-error.visible { display: block; }
+
+        .prompt-modal input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.08);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+            margin-bottom: 16px;
+            transition: border-color var(--transition);
+        }
+
+        .prompt-modal input[type="password"]:focus {
+            border-color: var(--accent);
+        }
+
+        .prompt-modal .prompt-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .board { padding: 15px; gap: 15px; flex-wrap: wrap; }
@@ -624,6 +699,21 @@
         </div>
     </div>
 
+    <!-- Password Prompt Modal -->
+    <div class="prompt-overlay" id="promptOverlay" onclick="closePromptOutside(event)">
+        <div class="prompt-modal">
+            <div class="prompt-icon" id="promptIcon">🔐</div>
+            <h3 id="promptTitle">Password Required</h3>
+            <p class="prompt-desc" id="promptDesc">Enter the password to unlock this backup.</p>
+            <p class="prompt-error" id="promptError">Incorrect password. Please try again.</p>
+            <input type="password" id="promptPassword" placeholder="Enter password" autocomplete="off">
+            <div class="prompt-actions">
+                <button class="btn btn-secondary" onclick="hidePrompt()">Cancel</button>
+                <button class="btn btn-primary" id="promptConfirmBtn" onclick="submitPrompt()">Unlock</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- State ---
         let tasks = [];
@@ -669,6 +759,44 @@
                 body: JSON.stringify({ id })
             });
             return res.json();
+        }
+
+        // --- Crypto (PBKDF2 + AES-GCM) ---
+        const cryptoSalt = new Uint8Array([75, 97, 110, 98, 97, 110, 66, 111, 97, 114, 100, 68, 97, 116, 97, 115]);
+        const cryptoIv = new Uint8Array([75, 98, 111, 97, 114, 100, 69, 110, 99, 114, 121, 112, 116, 105, 111, 110]);
+
+        async function deriveKey(password) {
+            const encoder = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey']);
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: cryptoSalt, iterations: 100000, hash: 'SHA-256' },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptData(data, password) {
+            const key = await deriveKey(password);
+            const iv = new Uint8Array(12);
+            crypto.getRandomValues(iv);
+            const encoder = new TextEncoder();
+            const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(JSON.stringify(data)));
+            const encryptedBytes = new Uint8Array(encrypted);
+            const combined = new Uint8Array(12 + encryptedBytes.length);
+            combined.set(iv, 0);
+            combined.set(encryptedBytes, 12);
+            return combined;
+        }
+
+        async function decryptData(encryptedData, password) {
+            const key = await deriveKey(password);
+            const iv = encryptedData.slice(0, 12);
+            const ciphertext = encryptedData.slice(12);
+            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+            const decoder = new TextDecoder();
+            return JSON.parse(decoder.decode(decrypted));
         }
 
         // --- Auth / Login ---
@@ -975,58 +1103,144 @@
         }
 
         // --- Import / Export ---
-        function exportData() {
-            const data = JSON.stringify(tasks, null, 2);
-            const blob = new Blob([data], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `kanban-backup-${new Date().toISOString().slice(0,10)}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
+        let promptResolve = null;
+
+        function showPasswordPrompt(title, desc, isImport) {
+            return new Promise((resolve) => {
+                promptResolve = resolve;
+                document.getElementById('promptTitle').textContent = title;
+                document.getElementById('promptDesc').textContent = desc;
+                document.getElementById('promptIcon').textContent = isImport ? '🔓' : '🔐';
+                document.getElementById('promptConfirmBtn').textContent = isImport ? 'Unlock & Import' : 'Export';
+                document.getElementById('promptError').classList.remove('visible');
+                document.getElementById('promptPassword').value = '';
+                document.getElementById('promptOverlay').classList.add('active');
+                setTimeout(() => document.getElementById('promptPassword').focus(), 100);
+            });
         }
 
-        function importData(event) {
+        function hidePrompt() {
+            document.getElementById('promptOverlay').classList.remove('active');
+            if (promptResolve) promptResolve(null);
+            promptResolve = null;
+        }
+
+        function closePromptOutside(e) {
+            if (e.target === e.currentTarget) hidePrompt();
+        }
+
+        async function submitPrompt() {
+            const password = document.getElementById('promptPassword').value;
+            if (!password) {
+                document.getElementById('promptError').textContent = 'Please enter a password.';
+                document.getElementById('promptError').classList.add('visible');
+                return;
+            }
+            hidePrompt();
+            if (promptResolve) {
+                promptResolve(password);
+                promptResolve = null;
+            }
+        }
+
+        async function exportData() {
+            try {
+                const password = await showPasswordPrompt(
+                    'Export Backup',
+                    'Enter a password to encrypt your tasks. You will need this password to import later.',
+                    false
+                );
+                if (!password) return;
+
+                const zip = new JSZip();
+                const jsonContent = JSON.stringify(tasks, null, 2);
+                const encryptedBytes = await encryptData(tasks, password);
+                const encryptedBlob = new Blob([encryptedBytes], { type: 'application/octet-stream' });
+                zip.file('tasks.enc', encryptedBlob);
+
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `kanban-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.error('Export failed:', err);
+                alert('Export failed. Check console for details.');
+            }
+        }
+
+        async function importData(event) {
             const file = event.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const imported = JSON.parse(e.target.result);
-                    if (Array.isArray(imported)) {
-                        (async () => {
-                            let count = 0;
-                            for (const t of imported) {
-                                if (t.id && t.title) {
-                                    await apiCreate({
-                                        id: t.id,
-                                        title: t.title,
-                                        description: t.description || t.desc || '',
-                                        priority: t.priority || 'none',
-                                        status: t.status || 'todo',
-                                        created_at: t.created_at || t.created || Date.now()
-                                    });
-                                    count++;
-                                }
-                            }
-                            await init();
-                            alert(`Imported ${count} tasks.`);
-                        })();
+
+            try {
+                const password = await showPasswordPrompt(
+                    'Import Backup',
+                    'Enter the password used to encrypt this backup.',
+                    true
+                );
+                if (!password) {
+                    event.target.value = '';
+                    return;
+                }
+
+                const zipBlob = await file.arrayBuffer();
+                const zip = await JSZip.loadAsync(zipBlob);
+                const encryptedFile = zip.file('tasks.enc');
+                if (!encryptedFile) {
+                    alert('Invalid backup file: no encrypted tasks found.');
+                    event.target.value = '';
+                    return;
+                }
+
+                const encryptedBytes = await encryptedFile.async('arraybuffer');
+                const tasksData = await decryptData(new Uint8Array(encryptedBytes), password);
+
+                if (!Array.isArray(tasksData)) {
+                    alert('Invalid backup file: unexpected format.');
+                    event.target.value = '';
+                    return;
+                }
+
+                let count = 0;
+                for (const t of tasksData) {
+                    if (t.id && t.title) {
+                        await apiCreate({
+                            id: t.id,
+                            title: t.title,
+                            description: t.description || t.desc || '',
+                            priority: t.priority || 'none',
+                            status: t.status || 'todo',
+                            created_at: t.created_at || t.created || Date.now()
+                        });
+                        count++;
                     }
-                } catch { alert('Invalid file format.'); }
-            };
-            reader.readAsText(file);
+                }
+
+                await init();
+                alert(`Imported ${count} tasks.`);
+            } catch (err) {
+                console.error('Import failed:', err);
+                alert('Import failed: incorrect password or invalid backup file.');
+            }
             event.target.value = '';
         }
 
         // --- Keyboard ---
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                if (document.getElementById('deleteModalOverlay').classList.contains('active')) {
+                if (document.getElementById('promptOverlay').classList.contains('active')) {
+                    hidePrompt();
+                } else if (document.getElementById('deleteModalOverlay').classList.contains('active')) {
                     hideDeleteConfirm();
                 } else {
                     closeModal();
                 }
+            }
+            if (e.key === 'Enter' && document.getElementById('promptOverlay').classList.contains('active')) {
+                submitPrompt();
             }
             if (e.key === 'Enter' && document.getElementById('modalOverlay').classList.contains('active')) {
                 if (e.target.tagName !== 'TEXTAREA') saveTask();
