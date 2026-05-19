@@ -15,6 +15,7 @@ A modern, feature-rich Kanban board web application with drag-and-drop task mana
 - **Keyboard Shortcuts** — `Enter` to save, `Escape` to close modals
 - **Confirmation Modals** — Styled delete confirmation instead of browser popups
 - **Responsive Design** — Works on mobile with horizontal scrolling
+- **Master Password** — Simple password protection via `KANBAN_PASSWORD` env var
 
 ## Architecture
 
@@ -194,6 +195,32 @@ Edit CSS variables in `index.html` under `:root`:
 1. Add a CSS rule for the new priority border color in `createCardEl()`
 2. Add a badge style class
 3. Add the option to the `<select>` dropdown
+
+## Security
+
+### Master Password
+
+Set a master password by providing the `KANBAN_PASSWORD` environment variable. When set, users must enter the password to access the board — a simple login screen appears on page load.
+
+```bash
+# Native
+KANBAN_PASSWORD=mysecret python3 server.py
+
+# Docker
+docker run -d -p 8040:8040 -e KANBAN_PASSWORD=mysecret -v kanban-data:/app ghcr.io/jeditec/kanban:latest
+
+# Docker Compose (env file)
+echo "KANBAN_PASSWORD=mysecret" > .env
+docker compose up -d
+
+# docker-compose.yml with inline env
+# services:
+#   kanban:
+#     environment:
+#       - KANBAN_PASSWORD=mysecret
+```
+
+Without `KANBAN_PASSWORD` set, no authentication is required (open access).
 
 ## Technologies
 

@@ -23,6 +23,85 @@
             --transition: 0.2s ease;
         }
 
+        /* Login Overlay */
+        .login-overlay {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .login-overlay.hidden { display: none; }
+
+        .login-card {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 380px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            text-align: center;
+        }
+
+        .login-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+        }
+
+        .login-card h2 {
+            color: var(--text);
+            margin-bottom: 8px;
+            font-size: 1.5rem;
+        }
+
+        .login-subtitle {
+            color: var(--text-muted);
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .login-form input {
+            padding: 12px 16px;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            background: #0f3460;
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color var(--transition);
+        }
+
+        .login-form input:focus {
+            border-color: var(--accent);
+        }
+
+        .login-form input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .login-error {
+            color: var(--accent);
+            font-size: 0.85rem;
+            min-height: 1.2em;
+            display: none;
+        }
+
+        .login-error.visible { display: block; }
+
+        .btn-login {
+            margin-top: 8px;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
@@ -412,6 +491,20 @@
     </style>
 </head>
 <body>
+    <!-- Login Overlay -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-card">
+            <div class="login-icon">🔒</div>
+            <h2>Kanban Board</h2>
+            <p class="login-subtitle">Enter master password to continue</p>
+            <form class="login-form" onsubmit="handleLogin(event)">
+                <input type="password" id="loginPassword" placeholder="Master password" autocomplete="current-password" autofocus>
+                <p class="login-error" id="loginError">Incorrect password</p>
+                <button type="submit" class="btn btn-primary btn-login">Unlock</button>
+            </form>
+        </div>
+    </div>
+
     <header>
         <h1>📋 Kanban Board</h1>
         <div class="header-actions">
@@ -536,11 +629,18 @@
     <script>
         // --- State ---
         let tasks = [];
+        let masterPassword = '';
         let draggedCard = null;
         let editingId = null;
         const API = '/api/tasks';
 
         // --- API Helpers ---
+        function apiHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
+            if (masterPassword) headers['X-Password'] = masterPassword;
+            return headers;
+        }
+
         async function apiGet() {
             const res = await fetch(API);
             return res.json();
@@ -549,7 +649,7 @@
         async function apiCreate(task) {
             const res = await fetch(API, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Action': 'create' },
+                headers: { 'Content-Type': 'application/json', 'X-Action': 'create', ...apiHeaders() },
                 body: JSON.stringify(task)
             });
             return res.json();
@@ -558,7 +658,7 @@
         async function apiUpdate(task) {
             const res = await fetch(API, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...apiHeaders() },
                 body: JSON.stringify(task)
             });
             return res.json();
@@ -567,16 +667,61 @@
         async function apiDelete(id) {
             const res = await fetch(API, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...apiHeaders() },
                 body: JSON.stringify({ id })
             });
             return res.json();
         }
 
+        // --- Auth / Login ---
+        function showLogin() {
+            document.getElementById('loginOverlay').classList.remove('hidden');
+            document.getElementById('loginPassword').focus();
+        }
+
+        function hideLogin() {
+            document.getElementById('loginOverlay').classList.add('hidden');
+        }
+
+        function showLoginError() {
+            const el = document.getElementById('loginError');
+            el.classList.add('visible');
+            setTimeout(() => el.classList.remove('visible'), 3000);
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const password = document.getElementById('loginPassword').value;
+            if (!password) return;
+
+            // Try authenticating with a quick API call
+            try {
+                const res = await fetch(API);
+                if (res.status === 200) {
+                    masterPassword = password;
+                    hideLogin();
+                    init();
+                } else {
+                    showLoginError();
+                    document.getElementById('loginPassword').value = '';
+                    document.getElementById('loginPassword').focus();
+                }
+            } catch {
+                showLoginError();
+                document.getElementById('loginPassword').value = '';
+                document.getElementById('loginPassword').focus();
+            }
+        }
+
         // --- Init ---
         async function init() {
             try {
-                tasks = await apiGet();
+                const res = await fetch(API);
+                if (res.status === 401) {
+                    showLogin();
+                    return;
+                }
+                tasks = await res.json();
             } catch (e) {
                 console.error('Failed to load tasks:', e);
                 alert('Could not connect to server. Make sure server.py is running.');

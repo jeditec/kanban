@@ -9,6 +9,10 @@ from urllib.parse import urlparse, parse_qs
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kanban.db')
 
+# Master password for simple authentication (set via KANBAN_PASSWORD env var)
+MASTER_PASSWORD = os.environ.get('KANBAN_PASSWORD', '')
+PASSWORD_HEADER = 'X-Password'
+
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -34,10 +38,22 @@ def init_db():
     conn.close()
 
 
+def _check_password(handler):
+    """Check if the request contains the correct master password header.
+    Returns True if authentication passes or no password is set."""
+    if not MASTER_PASSWORD:
+        return True
+    provided = handler.headers.get(PASSWORD_HEADER, '')
+    return provided == MASTER_PASSWORD
+
+
 class KanbanHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == '/api/tasks':
+            if not _check_password(self):
+                self._send_json(401, {'error': 'Unauthorized'})
+                return
             self._serve_tasks()
         elif parsed.path == '/':
             self.serve_index()
@@ -51,6 +67,9 @@ class KanbanHandler(SimpleHTTPRequestHandler):
         data = json.loads(body)
 
         if parsed.path == '/api/tasks':
+            if not _check_password(self):
+                self._send_json(401, {'error': 'Unauthorized'})
+                return
             action = self.headers.get('X-Action', 'create')
             if action == 'create':
                 self._create_task(data)
@@ -68,6 +87,9 @@ class KanbanHandler(SimpleHTTPRequestHandler):
         data = json.loads(body)
 
         if parsed.path == '/api/tasks':
+            if not _check_password(self):
+                self._send_json(401, {'error': 'Unauthorized'})
+                return
             self._update_task(data)
         else:
             self._send_error(404, 'Not found')
@@ -79,6 +101,9 @@ class KanbanHandler(SimpleHTTPRequestHandler):
         data = json.loads(body)
 
         if parsed.path == '/api/tasks':
+            if not _check_password(self):
+                self._send_json(401, {'error': 'Unauthorized'})
+                return
             self._delete_task(data)
         else:
             self._send_error(404, 'Not found')
