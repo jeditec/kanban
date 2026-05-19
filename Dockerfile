@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libzip-dev 
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
+# Copy application files
+COPY . .
+
 # Environment variables
 ENV KANBAN_HTTP_PORT=8060
 ENV KANBAN_PASSWORD=changeme
