@@ -36,7 +36,7 @@ Open **http://localhost:3000** in your browser.
 
 ### Full Docker Compose Configuration
 
-Create a `docker-compose.yml` for full control:
+Create a `docker-compose.yaml` for full control:
 
 ```yaml
 services:
@@ -84,7 +84,7 @@ docker compose down
 
 ```
 kanban/
-├── docker-compose.yml  # Full orchestration: port, password, bind mount, healthcheck
+├── docker-compose.yaml  # Full orchestration: port, password, bind mount, healthcheck
 ├── README.md           # This file
 └── package.json        # (optional)
 ```
@@ -121,7 +121,7 @@ A master password is required to access the board. Default is **`changeme`**.
 
 Set it:
 - Inline: `KANBAN_PASSWORD=mysecret docker compose up -d`
-- `docker-compose.yml`: `environment: [KANBAN_PASSWORD=mysecret]`
+- `docker-compose.yaml`: `environment: [KANBAN_PASSWORD=mysecret]`
 
 To disable auth, set `KANBAN_PASSWORD=''`.
 
@@ -129,7 +129,7 @@ To disable auth, set `KANBAN_PASSWORD=''`.
 
 Set it:
 - Inline: `KANBAN_HTTP_PORT=3000 docker compose up -d`
-- `docker-compose.yml` ports mapping: `"3000:8060"`
+- `docker-compose.yaml` ports mapping: `"3000:8060"`
 
 Default port is **8060**.
 
